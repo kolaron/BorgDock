@@ -25,7 +25,7 @@ retention:
 hooks:
     before_backup:
         - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml stop"'
-        - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/compose.yaml stop"'
+        - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yaml stop"'
         - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml stop"'
         - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml stop"'
         #- 'qm guest exec 100 -- bash -c "docker exec paperless-webserver-1 document_exporter --use-filename-format --delete --zip ../export"'
@@ -34,5 +34,5 @@ hooks:
         #- 'rm -f /mnt/tank-apps/paperless-ngx/export/*'
         - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml start"'
         - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml start"'
-        - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/compose.yaml start"'
+        - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yaml start"'
         - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml start"'
