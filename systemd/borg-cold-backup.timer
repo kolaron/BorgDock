@@ -1,0 +1,12 @@
+#/etc/systemd/system/borg-cold-backup.timer
+[Unit]
+Description=Nightly Borgmatic cold backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=borg-cold-backup.service
+
+[Install]
+WantedBy=timers.target

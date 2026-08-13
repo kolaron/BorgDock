@@ -1,0 +1,12 @@
+#/etc/systemd/system/borg-cold-backup.service
+[Unit]
+Description=Run Borgmatic cold backup when USB disk is attached
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/borg-run
+
+[Install]
+WantedBy=multi-user.target

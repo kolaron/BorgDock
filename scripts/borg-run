@@ -1,0 +1,119 @@
+#!/bin/bash
+set -euo pipefail
+
+# sudo chmod +x /usr/local/bin/borg-run
+# fstab example for cold backup:
+# UUID=your-drive-uuid /mnt/backup ext4 noauto,nofail,noatime,x-systemd.device-timeout=30s 0 0
+
+MOUNT_PATH="/mnt/backup"
+BACKUP_UUID="7be9c515-489c-4cd5-a08c-97ce6dae9d6e"
+BACKUP_DEVICE="/dev/disk/by-uuid/$BACKUP_UUID"
+
+LOG_DIR="/var/log/borgmatic"
+PID_FILE="/run/borgmatic-cold-backup.pid"
+
+run_worker() {
+    LOG_FILE="$1"
+
+    exec >> "$LOG_FILE" 2>&1
+
+    cleanup() {
+        status=$?
+
+        echo
+        echo "[$(date '+%F %T')] Cleanup started..."
+
+        echo "[$(date '+%F %T')] Syncing pending writes..."
+        sync || true
+
+        if findmnt -rn --target "$MOUNT_PATH" >/dev/null 2>&1; then
+            echo "[$(date '+%F %T')] Unmounting external drive: $MOUNT_PATH"
+            umount "$MOUNT_PATH" || true
+        else
+            echo "[$(date '+%F %T')] Mount path is not mounted: $MOUNT_PATH"
+        fi
+
+        rm -f "$PID_FILE"
+
+        if [ "$status" -eq 0 ]; then
+            echo "[$(date '+%F %T')] Backup finished successfully."
+            echo "[$(date '+%F %T')] Safe to unplug the drive."
+        else
+            echo "[$(date '+%F %T')] Backup failed with exit code: $status"
+            echo "[$(date '+%F %T')] Check this log: $LOG_FILE"
+        fi
+
+        exit "$status"
+    }
+
+    trap cleanup EXIT INT TERM
+
+    echo "[$(date '+%F %T')] Borgmatic cold backup started."
+    echo "[$(date '+%F %T')] Log file: $LOG_FILE"
+    echo "[$(date '+%F %T')] Mount path: $MOUNT_PATH"
+    echo
+
+    if findmnt -rn --target "$MOUNT_PATH" >/dev/null 2>&1; then
+        echo "[$(date '+%F %T')] $MOUNT_PATH is already mounted."
+    else
+        echo "[$(date '+%F %T')] Mounting external drive..."
+        mount "$MOUNT_PATH"
+    fi
+
+    echo "[$(date '+%F %T')] Starting borgmatic..."
+    borgmatic --verbosity 1 --stats
+
+    echo "[$(date '+%F %T')] Borgmatic command completed."
+}
+
+if [ "${1:-}" = "--worker" ]; then
+    run_worker "$2"
+    exit 0
+fi
+
+# Check whether backup disk is attached
+if [ ! -e "$BACKUP_DEVICE" ]; then
+    echo "Backup disk not attached."
+    echo "Expected UUID: $BACKUP_UUID"
+    exit 0
+fi
+
+mkdir -p "$LOG_DIR"
+
+if [ -f "$PID_FILE" ]; then
+    old_pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+
+    if [ -n "$old_pid" ] && kill -0 "$old_pid" 2>/dev/null; then
+        echo "Backup already appears to be running."
+        echo "PID: $old_pid"
+        echo "PID file: $PID_FILE"
+        echo
+        echo "Check it with:"
+        echo "ps -p $old_pid -o pid,etime,cmd"
+        exit 1
+    else
+        rm -f "$PID_FILE"
+    fi
+fi
+
+LOG_FILE="$LOG_DIR/borgmatic-$(date '+%Y-%m-%d_%H-%M-%S').log"
+
+SELF="$0"
+if [[ "$SELF" != /* ]]; then
+    SELF="$(command -v "$SELF")"
+fi
+
+nohup "$SELF" --worker "$LOG_FILE" >/dev/null 2>&1 &
+PID="$!"
+
+echo "$PID" > "$PID_FILE"
+
+echo "Borgmatic backup started in background."
+echo "PID: $PID"
+echo "Log file: $LOG_FILE"
+echo
+echo "Watch log with:"
+echo "tail -f '$LOG_FILE'"
+echo
+echo "Check process with:"
+echo "ps -p $PID -o pid,etime,cmd"

@@ -1,0 +1,38 @@
+# Where to store the backup (your existing repository)
+repositories:
+    - /mnt/backup/borg-repo/
+
+# What to back up (exactly matching your source directories)
+source_directories:
+    - /tank/apps
+    - /tank/home
+
+# Your repository passphrase (IMPORTANT: set this to your existing passphrase)
+encryption_passphrase: "your-existing-repo-passphrase-here"
+
+# Compression: matches your --compression zstd,8
+compression: zstd,8
+
+# Exclude patterns: matches all your --exclude flags
+exclude_patterns:
+    - '/tank/*/.zfs/*'
+
+# Optional: Retention policy (add this if you want borgmatic to handle pruning)
+retention:
+    keep_weekly: 4
+    keep_monthly: 3
+
+hooks:
+    before_backup:
+        - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml stop"'
+        - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/compose.yaml stop"'
+        - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml stop"'
+        - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml stop"'
+        #- 'qm guest exec 100 -- bash -c "docker exec paperless-webserver-1 document_exporter --use-filename-format --delete --zip ../export"'
+
+    after_backup:
+        #- 'rm -f /mnt/tank-apps/paperless-ngx/export/*'
+        - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml start"'
+        - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml start"'
+        - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/compose.yaml start"'
+        - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml start"'
