@@ -2,7 +2,7 @@
 
 Automated cold-backup solution using Borgmatic and a removable USB HDD.
 
-The backup runs via a nightly systemd timer. If the backup disk is not connected, the run is skipped. If the disk is connected, the script mounts it, runs Borgmatic in the background, writes logs, and safely unmounts the disk when finished.
+The backup runs via a nightly systemd timer. If the backup disk is not connected, the run is skipped. If the disk is connected, the script mounts it, runs Borgmatic in the under systemd, writes logs, and safely unmounts the disk when finished.
 
 ## Features
 
@@ -10,10 +10,9 @@ The backup runs via a nightly systemd timer. If the backup disk is not connected
 - Cold/offline backup workflow
 - Removable USB HDD support
 - Backup disk detection by UUID
-- Background execution
+- systemd-managed execution
 - Automatic mount/unmount
 - Automatic logging
-- Duplicate-run protection
 - systemd service and timer
 - Install, update, uninstall, and status commands
 
@@ -148,6 +147,8 @@ Run the scheduled job immediately:
 systemctl start borg-cold-backup.service
 ```
 
+Note: `systemctl start` blocks until the backup finishes, because the service runs Borgmatic in the foreground. Use `systemctl start --no-block borg-cold-backup.service` to return immediately.
+
 ## Monitoring
 
 Show timer schedule:
@@ -183,8 +184,10 @@ tail -f "$(ls -t /var/log/borgmatic/*.log | head -n1)"
 Check whether a backup is running:
 
 ```bash
-ps -fp "$(cat /run/borgmatic-cold-backup.pid)"
+systemctl is-active borg-cold-backup.service
 ```
+
+`active` means a backup is in progress; `inactive` means none is running.
 
 ## Typical Weekly Workflow
 
@@ -237,6 +240,8 @@ Check service logs:
 ```bash
 journalctl -u borg-cold-backup.service
 ```
+
+Note: `journalctl` shows the service lifecycle (start/stop). Detailed backup output is written to the per-run log file in `/var/log/borgmatic/`.
 
 Verify backup disk UUID:
 

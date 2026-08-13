@@ -14,7 +14,6 @@ SERVICE_DST="/etc/systemd/system/borg-cold-backup.service"
 TIMER_DST="/etc/systemd/system/borg-cold-backup.timer"
 
 LOG_DIR="/var/log/borgmatic"
-PID_FILE="/run/borgmatic-cold-backup.pid"
 
 SERVICE_NAME="borg-cold-backup.service"
 TIMER_NAME="borg-cold-backup.timer"
@@ -114,28 +113,21 @@ uninstall_app() {
     echo "Disabling timer..."
     systemctl disable --now "$TIMER_NAME" 2>/dev/null || true
 
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        echo
+        echo "A backup still appears to be running."
+        echo
+        echo "Check it with:"
+        echo "  systemctl status $SERVICE_NAME"
+        echo
+        echo "Uninstall stopped to avoid interrupting an active backup."
+        echo "Stop the backup manually if needed, then rerun:"
+        echo "  ./install.sh --uninstall"
+        exit 1
+    fi
+
     echo "Stopping service..."
     systemctl stop "$SERVICE_NAME" 2>/dev/null || true
-
-    if [ -f "$PID_FILE" ]; then
-        PID="$(cat "$PID_FILE" 2>/dev/null || true)"
-
-        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-            echo
-            echo "A backup process still appears to be running."
-            echo "PID: $PID"
-            echo
-            echo "Check it with:"
-            echo "  ps -fp $PID"
-            echo
-            echo "Uninstall stopped to avoid interrupting an active backup."
-            echo "Stop the backup manually if needed, then rerun:"
-            echo "  ./install.sh --uninstall"
-            exit 1
-        fi
-
-        rm -f "$PID_FILE"
-    fi
 
     echo "Removing installed files..."
     rm -f "$BORG_RUN_DST"
@@ -175,17 +167,11 @@ status_app() {
 
     echo
     echo "Backup process:"
-    if [ -f "$PID_FILE" ]; then
-        PID="$(cat "$PID_FILE" 2>/dev/null || true)"
-
-        if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-            ps -fp "$PID"
-        else
-            echo "PID file exists, but process is not running."
-            echo "PID file: $PID_FILE"
-        fi
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
+        PID="$(systemctl show "$SERVICE_NAME" -p MainPID --value)"
+        ps -fp "$PID"
     else
-        echo "No PID file found."
+        echo "No backup currently running."
     fi
 
     echo
