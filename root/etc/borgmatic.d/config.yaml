@@ -1,0 +1,81 @@
+# BorgDock Borgmatic Configuration
+# 
+# This config uses environment variable substitution for portability.
+# Set these in docker-compose.yml or via Docker Secrets:
+#
+#   BACKUP_MOUNT_PATH      - Mount point for USB disk (default: /mnt/backup)
+#   BORG_REPO_PATH         - Borg repository path (default: /mnt/backup/borg-repo)
+#   BORG_SOURCE_1, ...     - Backup source directories
+#   BORG_PASSPHRASE_FILE   - Path to passphrase file (default: /run/secrets/borg_passphrase)
+#   BORG_COMPRESSION       - Compression setting (default: zstd,8)
+#   BACKUP_TIMEZONE        - Timezone for logging (default: UTC)
+
+source_directories:
+  - ${BORG_SOURCE_1:-/mnt/backup}
+  - ${BORG_SOURCE_2}
+  - ${BORG_SOURCE_3}
+  - ${BORG_SOURCE_4}
+
+# Repository storage location (on mounted USB disk)
+repositories:
+  - path: ${BORG_REPO_PATH:-/mnt/backup/borg-repo}
+    label: backup
+
+# Encryption and passphrase
+encryption:
+  passphrase: ${BORG_PASSPHRASE}
+
+# Compression settings
+compression: ${BORG_COMPRESSION:-zstd,8}
+
+# Archive naming scheme
+archive_name_format: '{hostname}-{now:%Y%m%d-%H%M%S}'
+
+# Exclude patterns
+exclude_patterns:
+  # ZFS snapshots
+  - '/tank/*/.zfs/*'
+  # Docker volumes
+  - '**/.cache'
+  - '**/__pycache__'
+  - '**/node_modules'
+
+# Backup statistics
+checks:
+  - name: repository
+    frequency: 2 weeks
+  - name: archives
+    frequency: 2 weeks
+
+# Retention policy: keep recent backups
+retention:
+  keep_minutely: 0
+  keep_hourly: 0
+  keep_daily: 7
+  keep_weekly: 4
+  keep_monthly: 3
+  keep_yearly: 1
+
+# Hooks: stop/start services around backup
+hooks:
+  before_backup:
+    # Stop Immich container in Proxmox VM 103
+    - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml stop" || true'
+    # Stop services in Proxmox VM 100
+    - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yml stop" || true'
+    - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml stop" || true'
+    - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml stop" || true'
+
+  after_backup:
+    # Restart services in Proxmox VM 100
+    - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml start" || true'
+    - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml start" || true'
+    - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yml start" || true'
+    - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml start" || true'
+
+  # Notification: log on failure (optional: integrate healthchecks.io)
+  on_error:
+    - echo "Backup failed. Check logs via: docker logs <container-id>"
+
+# Borgmatic logging
+verbosity: 1

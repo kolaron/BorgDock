@@ -1,0 +1,134 @@
+version: '3.8'
+
+# BorgDock: Containerized cold-backup solution
+# 
+# Before running:
+# 1. Create Docker Secret for BORG_PASSPHRASE:
+#    echo "your-existing-passphrase" | docker secret create borg_passphrase -
+# 
+# 2. Update environment variables below:
+#    - BACKUP_DISK_UUID: UUID of your backup USB disk
+#    - BORG_SOURCE_*: Directories to back up
+#    - CRON: Schedule (default: 2 AM daily)
+#
+# 3. Start: docker-compose up -d
+# 4. Monitor: docker-compose logs -f
+# 5. Stop: docker-compose down (gracefully unmounts USB)
+
+services:
+  borgmatic:
+    build: .
+    container_name: borgdock
+    
+    # Restart policy: only on failure
+    restart: unless-stopped
+    
+    # Allow enough time for backup to complete before forceful shutdown
+    stop_grace_period: 30m
+    
+    # Environment: backup configuration and schedule
+    environment:
+      # Timezone for logging and scheduling
+      TZ: UTC
+      
+      # USB Backup Configuration
+      BACKUP_DISK_UUID: "7be9c515-489c-4cd5-a08c-97ce6dae9d6e"
+      BACKUP_MOUNT_PATH: "/mnt/backup"
+      
+      # Borg Repository
+      BORG_REPO_PATH: "/mnt/backup/borg-repo"
+      
+      # Backup Sources: uncomment and set your directories
+      BORG_SOURCE_1: "/tank/apps"
+      BORG_SOURCE_2: "/tank/home"
+      # BORG_SOURCE_3: "/path/to/source3"
+      # BORG_SOURCE_4: "/path/to/source4"
+      
+      # Borg Encryption & Compression
+      # For existing repo, use the same passphrase
+      BORG_PASSPHRASE_FILE: "/run/secrets/borg_passphrase"
+      BORG_COMPRESSION: "zstd,8"
+      
+      # Backup Schedule (cron format)
+      # Default: 2 AM UTC daily
+      CRON: "0 2 * * *"
+      
+      # Optional: set to 'false' to disable cron, then run manual backups
+      # CRON: "false"
+      
+      # Debug: set to 'true' to log secret expansion (for troubleshooting)
+      # DEBUG_SECRETS: "true"
+    
+    # Secrets: keep passphrase out of compose file
+    secrets:
+      - borg_passphrase
+    
+    # Volumes: persistent storage and mount points
+    volumes:
+      # USB backup disk mount point
+      # Note: Device must be present and in /etc/fstab with noauto option
+      - /mnt/backup:/mnt/backup:shared
+      
+      # Borgmatic state (check tracking, etc.)
+      - borgmatic_state:/root/.local/state/borgmatic
+      
+      # Borg keyfiles and config
+      - borg_keyfiles:/root/.config/borg
+      
+      # Borg chunk cache (improves dedup performance)
+      - borg_cache:/root/.cache/borg
+      
+      # Borgmatic config (can be read-only)
+      - ./root/etc/borgmatic.d:/etc/borgmatic.d:ro
+      
+      # Optional: SSH keys for remote repos (if needed)
+      # - /home/user/.ssh:/root/.ssh:ro
+    
+    # Device mounts: allow USB disk access
+    # Uncomment if you want direct device access instead of fstab mounting
+    # devices:
+    #   - /dev/disk/by-uuid/7be9c515-489c-4cd5-a08c-97ce6dae9d6e:/dev/backup
+    
+    # Capabilities: required for mount/unmount operations
+    cap_add:
+      - SYS_ADMIN
+      - SYS_CHROOT
+    
+    # Security: run as root (needed for mount)
+    security_opt:
+      - no-new-privileges:false
+    
+    # Network: not needed for cold backups, but keep for potential notifications
+    # networks:
+    #   - default
+    
+    # Logging configuration
+    logging:
+      driver: "local"
+      options:
+        max-size: "100m"
+        max-file: "3"
+        labels: "app=borgdock,type=backup"
+    
+    # Health check: verify backup disk is mounted (optional)
+    healthcheck:
+      test: ["CMD", "findmnt", "/mnt/backup"]
+      interval: 5m
+      timeout: 30s
+      retries: 2
+      start_period: 1m
+
+# Volumes: persistent data
+volumes:
+  borgmatic_state:
+    driver: local
+  borg_keyfiles:
+    driver: local
+  borg_cache:
+    driver: local
+
+# Secrets: sensitive data (kept out of images)
+secrets:
+  borg_passphrase:
+    # Create with: echo "your-passphrase" | docker secret create borg_passphrase -
+    external: true

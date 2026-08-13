@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.env.local
+*.log
+*.swp
+.DS_Store
+node_modules
+README.md
+MIGRATION.md
+install.sh
+paperless-export.sh
+systemd/
+scripts/

@@ -1,0 +1,46 @@
+#!/bin/sh
+
+# S6 init service: Detect and mount USB backup disk by UUID
+# Type: oneshot (runs once at startup, then exits)
+# Environment variables:
+#   BACKUP_DISK_UUID - UUID of the backup disk (e.g., 7be9c515-489c-4cd5-a08c-97ce6dae9d6e)
+#   BACKUP_MOUNT_PATH - Mount point (default: /mnt/backup)
+
+set -e
+
+MOUNT_PATH="${BACKUP_MOUNT_PATH:-/mnt/backup}"
+DISK_UUID="${BACKUP_DISK_UUID}"
+
+if [ -z "$DISK_UUID" ]; then
+    echo "[$(date '+%F %T')] ⚠ BACKUP_DISK_UUID not set. USB backup will be skipped."
+    exit 0
+fi
+
+DEVICE="/dev/disk/by-uuid/$DISK_UUID"
+
+# Check if device exists
+if [ ! -e "$DEVICE" ]; then
+    echo "[$(date '+%F %T')] ⚠ Backup disk (UUID: $DISK_UUID) not found."
+    echo "[$(date '+%F %T')] USB backup will be skipped. Check if disk is connected."
+    exit 0
+fi
+
+# Check if already mounted
+if findmnt -rn --target "$MOUNT_PATH" >/dev/null 2>&1; then
+    echo "[$(date '+%F %T')] ℹ Backup disk already mounted at $MOUNT_PATH"
+    exit 0
+fi
+
+# Create mount point if needed
+mkdir -p "$MOUNT_PATH"
+
+# Attempt to mount
+echo "[$(date '+%F %T')] → Mounting backup disk (UUID: $DISK_UUID) to $MOUNT_PATH"
+if mount "$MOUNT_PATH" 2>/dev/null; then
+    echo "[$(date '+%F %T')] ✓ Backup disk mounted successfully"
+    exit 0
+else
+    echo "[$(date '+%F %T')] ✗ Failed to mount backup disk"
+    echo "[$(date '+%F %T')] Check fstab entry and disk availability"
+    exit 1
+fi

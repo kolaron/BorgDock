@@ -1,0 +1,26 @@
+#!/bin/sh
+
+# S6 finish script: Unmount backup disk on container shutdown
+# Called when the service exits or container receives SIGTERM
+
+MOUNT_PATH="${BACKUP_MOUNT_PATH:-/mnt/backup}"
+
+echo "[$(date '+%F %T')] → Cleanup: Unmounting backup disk..."
+
+# Sync pending writes
+sync 2>/dev/null || true
+
+# Attempt unmount
+if findmnt -rn --target "$MOUNT_PATH" >/dev/null 2>&1; then
+    if umount "$MOUNT_PATH" 2>/dev/null; then
+        echo "[$(date '+%F %T')] ✓ Backup disk unmounted safely"
+    else
+        echo "[$(date '+%F %T')] ⚠ Failed to unmount (may be in use)"
+        # Try lazy unmount as fallback
+        umount -l "$MOUNT_PATH" 2>/dev/null || true
+    fi
+else
+    echo "[$(date '+%F %T')] ℹ Backup disk not mounted"
+fi
+
+exit 0
