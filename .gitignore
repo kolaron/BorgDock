@@ -1,0 +1,23 @@
+# Local configuration (personal customizations)
+config.local.yaml
+docker-compose.override.yml
+docker-compose.local.yml
+.env.local
+
+# Secrets and SSH keys
+/root/.ssh/
+.ssh/
+*.key
+*.pem
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+__pycache__/
+*.pyc

@@ -81,8 +81,8 @@ services:
       # Borgmatic config (can be read-only)
       - ./root/etc/borgmatic.d:/etc/borgmatic.d:ro
       
-      # Optional: SSH keys for remote repos (if needed)
-      # - /home/user/.ssh:/root/.ssh:ro
+      # Optional: SSH keys for remote repos or orchestration hooks
+      # - /root/.ssh:/root/.ssh:ro
     
     # Device mounts: allow USB disk access
     # Uncomment if you want direct device access instead of fstab mounting
