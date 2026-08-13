@@ -42,17 +42,30 @@ The backup runs via Docker Compose on a configurable schedule (default: 2 AM dai
 
 ## Quick Start
 
-### 1. Create Docker Secret for Borg Passphrase
-
-Store your existing Borg repository passphrase securely:
+### 1. Clone Repository
 
 ```bash
-echo "your-existing-passphrase" | docker secret create borg_passphrase -
+git clone https://github.com/kolaron/BorgDock.git
+cd BorgDock
 ```
 
-### 2. Configure docker-compose.yml
+### 2. Create Docker Secret for Borg Passphrase
 
-Edit `docker-compose.yml` and update:
+Store your Borg repository passphrase securely:
+
+```bash
+echo "your-passphrase" | docker secret create borg_passphrase -
+```
+
+### 3. Customize Configuration
+
+Copy the environment template:
+
+```bash
+cp .env.example .env.local
+```
+
+Edit `docker-compose.yml` environment variables:
 
 - **BACKUP_DISK_UUID**: Your USB disk's UUID
 - **BORG_SOURCE_1**, **BORG_SOURCE_2**, etc.: Directories to back up
@@ -178,34 +191,65 @@ All configuration is driven by environment variables in `docker-compose.yml`:
 
 ### Borgmatic Configuration
 
-Edit `root/etc/borgmatic.d/config.yaml` to customize:
+Edit `root/etc/borgmatic.d/config.yaml` to customize your backup behavior:
 
+- **Source directories** — Use environment variables: `${BORG_SOURCE_1}`, `${BORG_SOURCE_2}`, etc.
 - **Retention policy** — keep_daily, keep_weekly, keep_monthly, keep_yearly
-- **Exclude patterns** — which directories/files to skip
-- **Hooks** — pre/post backup scripts (e.g., stop containers, export databases)
+- **Exclude patterns** — Which directories/files to skip (e.g., caches, node_modules)
 - **Compression** — zstd, lz4, none, etc.
-- **Checks** — repository integrity checks
+- **Checks** — Repository integrity checks
+- **Hooks/Commands** — Pre/post backup orchestration (optional)
 
-Example custom config:
+#### Adding Orchestration Hooks
+
+To stop/start services before/after backup (e.g., Docker containers, databases, VMs), add a `commands:` section to `config.yaml`:
 
 ```yaml
-retention:
-  keep_daily: 7
-  keep_weekly: 4
-  keep_monthly: 3
-  keep_yearly: 1
-
-exclude_patterns:
-  - '/tank/*/.zfs/*'
-  - '**/.cache'
-  - '**/node_modules'
-
-hooks:
-  before_backup:
-    - 'docker stop $(docker ps -q -f label=backup=true)' # Stop containers
-  after_backup:
-    - 'docker start $(docker ps -aq -f label=backup=true)' # Start containers
+commands:
+  - before: everything
+    run:
+      - 'your-command-here stop'
+      - 'another-command here'
+  
+  - after: everything
+    states: [finish, fail]  # Run even if backup fails
+    run:
+      - 'your-command-here start'
+      - 'another-command here'
 ```
+
+**Example: Docker container with label:**
+```yaml
+commands:
+  - before: everything
+    run:
+      - 'docker ps -q -f "label=backup" | xargs --no-run-if-empty docker container stop -t 60'
+  - after: everything
+    states: [finish, fail]
+    run:
+      - 'docker compose start'
+```
+
+**Example: SSH to remote host (Proxmox, etc.):**
+```yaml
+commands:
+  - before: everything
+    run:
+      - 'ssh -i /root/.ssh/id_ed25519 root@proxmox-host "pct exec 100 -- docker compose stop" || true'
+  - after: everything
+    states: [finish, fail]
+    run:
+      - 'ssh -i /root/.ssh/id_ed25519 root@proxmox-host "pct exec 100 -- docker compose start" || true'
+```
+
+For SSH examples, ensure SSH key is mounted:
+```yaml
+# docker-compose.yml
+volumes:
+  - /root/.ssh:/root/.ssh:ro
+```
+
+See [Borgmatic documentation](https://torsion.org/borgmatic/docs/how-to/add-preparation-and-cleanup-steps-to-backups/) for more hook options.
 
 ## Usage
 

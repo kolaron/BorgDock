@@ -56,26 +56,31 @@ retention:
   keep_monthly: 3
   keep_yearly: 1
 
-# Hooks: stop/start services around backup
-hooks:
-  before_backup:
-    # Stop Immich container in Proxmox VM 103
-    - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml stop" || true'
-    # Stop services in Proxmox VM 100
-    - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yml stop" || true'
-    - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml stop" || true'
-    - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml stop" || true'
+# Execution hooks: run SSH commands to stop/start services on Proxmox VMs
+# Uses 'commands' syntax (Borgmatic 2.x) with 'states' to control when hooks run
+# Available states: [start, finish, fail]
+#
+# Requires:
+#   - SSH key at /root/.ssh/id_ed25519 (read-only, mounted in docker-compose.yml)
+#   - SSH access to Proxmox host as root
+#
+# Update SSH commands below with your actual Proxmox host address
 
-  after_backup:
-    # Restart services in Proxmox VM 100
-    - 'qm guest exec 100 -- bash -c "docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml start" || true'
-    - 'qm guest exec 100 -- bash -c "docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml start" || true'
-    - 'qm guest exec 100 -- bash -c "docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yml start" || true'
-    - 'pct exec 103 -- bash -c "docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml start" || true'
-
-  # Notification: log on failure (optional: integrate healthchecks.io)
-  on_error:
-    - echo "Backup failed. Check logs via: docker logs <container-id>"
+commands:
+  - before: everything
+    run:
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "pct exec 103 -- bash -c \"docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml stop\"" || true'
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "qm guest exec 100 -- bash -c \"docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yml stop\"" || true'
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "qm guest exec 100 -- bash -c \"docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml stop\"" || true'
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "qm guest exec 100 -- bash -c \"docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml stop\"" || true'
+  
+  - after: everything
+    states: [finish, fail]
+    run:
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "qm guest exec 100 -- bash -c \"docker compose -p paperless -f /srv/docker-data/projects/Paperless/compose.yaml start\"" || true'
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "qm guest exec 100 -- bash -c \"docker compose -p calibrewebautomated -f /srv/docker-data/projects/Calibre_web_automated/compose.yaml start\"" || true'
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "qm guest exec 100 -- bash -c \"docker compose -p opencloud -f /srv/docker-data/projects/OpenCloud/docker-compose.yml start\"" || true'
+      - 'ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@proxmox-host "pct exec 103 -- bash -c \"docker compose -p immich -f /var/lib/docker/volumes/arcane-data/_data/projects/Immich/compose.yaml start\"" || true'
 
 # Borgmatic logging
 verbosity: 1
