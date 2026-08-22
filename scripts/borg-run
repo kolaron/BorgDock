@@ -8,6 +8,7 @@ set -euo pipefail
 MOUNT_PATH="/mnt/backup"
 BACKUP_UUID="7be9c515-489c-4cd5-a08c-97ce6dae9d6e"
 BACKUP_DEVICE="/dev/disk/by-uuid/$BACKUP_UUID"
+BORG_REPO="$MOUNT_PATH/borg-repo"
 
 LOG_DIR="/var/log/borgmatic"
 
@@ -33,7 +34,7 @@ cleanup() {
     echo "[$(date '+%F %T')] Syncing pending writes..."
     sync || true
 
-    if findmnt -rn --target "$MOUNT_PATH" >/dev/null 2>&1; then
+    if mountpoint -q "$MOUNT_PATH"; then
         echo "[$(date '+%F %T')] Unmounting external drive: $MOUNT_PATH"
         umount "$MOUNT_PATH" || true
     else
@@ -58,11 +59,29 @@ echo "[$(date '+%F %T')] Log file: $LOG_FILE"
 echo "[$(date '+%F %T')] Mount path: $MOUNT_PATH"
 echo
 
-if findmnt -rn --target "$MOUNT_PATH" >/dev/null 2>&1; then
+if mountpoint -q "$MOUNT_PATH"; then
     echo "[$(date '+%F %T')] $MOUNT_PATH is already mounted."
 else
     echo "[$(date '+%F %T')] Mounting external drive..."
     mount "$MOUNT_PATH"
+fi
+
+# Verify that the expected backup filesystem is actually mounted here.
+MOUNT_SOURCE="$(findmnt -rn -o SOURCE --target "$MOUNT_PATH" || true)"
+MOUNT_UUID="$(findmnt -rn -o UUID --target "$MOUNT_PATH" || true)"
+
+if [ -z "$MOUNT_SOURCE" ] || [ "$MOUNT_UUID" != "$BACKUP_UUID" ]; then
+    echo "[$(date '+%F %T')] ERROR: Expected backup disk is not mounted at $MOUNT_PATH."
+    echo "[$(date '+%F %T')] Expected UUID: $BACKUP_UUID"
+    echo "[$(date '+%F %T')] Mounted source: ${MOUNT_SOURCE:-none}"
+    echo "[$(date '+%F %T')] Mounted UUID: ${MOUNT_UUID:-none}"
+    exit 1
+fi
+
+# Do not allow Borgmatic hooks to run unless the repository is present.
+if [ ! -d "$BORG_REPO" ]; then
+    echo "[$(date '+%F %T')] ERROR: Borg repository does not exist: $BORG_REPO"
+    exit 1
 fi
 
 echo "[$(date '+%F %T')] Starting borgmatic..."
